@@ -246,6 +246,7 @@ void codemaker ()
       keyHistory[indexKeypress]=kpd.getKey();
       if (indexKeypress == 3)
       codematcher ();
+      indexKeypress = 0;
       }
     }
   }
