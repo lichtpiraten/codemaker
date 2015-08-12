@@ -68,9 +68,9 @@ char codes[3][4] = {
 EthernetUDP Udp;
 
 //the Arduino's IP
-IPAddress ip(128, 32, 122, 252);
+IPAddress ip(192, 168, 52, 3);
 //destination IP
-IPAddress outIp(128, 32, 122, 125);
+IPAddress outIp(192, 168, 52, 222);
 const unsigned int outPort = 9999;
 
 byte mac[] = {
@@ -122,13 +122,19 @@ void loop()
 void toto(int id)
 
 {
+  Serial.print("id: ");
+  Serial.println(id);
+  
   switch (id) {
     case 1: {
-        OSCMessage msg("/toto/1"); //the message wants an OSC address as first argument
+        //the message wants an OSC address as first argument
+        OSCMessage msg("/toto/1");
         Udp.beginPacket(outIp, outPort);
-        msg.send(Udp); // send the bytes to the SLIP stream
-        Udp.endPacket(); // mark the end of the OSC Packet
+        msg.add(23.42);
+        msg.send(Udp);
+        Udp.endPacket();
         msg.empty(); // free space occupied by message
+        delay(20);
       }
       break;
     case 2: {
@@ -198,7 +204,7 @@ void codematcher () {
     if (j == 4) {
       Serial.println("Winner");
       winner();
-      toto(i);
+      toto(i+1);
       return;
     }
   }
