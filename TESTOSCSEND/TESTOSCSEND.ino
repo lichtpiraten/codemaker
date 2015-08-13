@@ -1,21 +1,35 @@
 // Yes, this is actually -*-c++-*-
+/*
+    Make an Keypad Lock and send OSC message over UDP with sucessful code entry
+ */
 
 #include <OSCMessage.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 #include <SPI.h>
 #include "./Keypad.h"
+#include "./Timer.h"
 
-/*
-    Make an Keypad Lock and send OSC message over UDP with sucessful code entry
+// Codes
+char codes[3][4] = {
+  {'1', '2', '3', '4'},
+  {'2', '3', '4', '5'},
+  {'3', '4', '5', '6'}
+};
 
- */
+// Timeout for OSC messages
+#define TIMEOUT 4000
+
+//the Arduino's IP
+IPAddress ip(192, 168, 52, 3);
+//destination IP
+IPAddress outIp(192, 168, 52, 222);
+const unsigned int outPort = 8000;
+
 
 // ==========================================================================================
 //   KEYPAD CREATE
 // ==========================================================================================
-
-
 
 const byte ROWS = 4; // Four rows
 const byte COLS = 3; // Three columns
@@ -40,7 +54,8 @@ byte colPins[COLS] = { A2, A1, A0 };
 // Create the Keypad
 Keypad kpd = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 
-
+Timer timer;
+int8_t timers[3] = {-1,-1,-1};
 
 int redled =  3;
 int greedled = 4;
@@ -54,24 +69,14 @@ char keyHistory[historySize]; //allows 10 key presses to be stored
 
 char codearray[4] {'x', 'x', 'x', 'x'} ;
 
-int indexKeypress = 0; //
+int indexKeypress = 0;
 
 
 
-char codes[3][4] = {
-  {'1', '2', '3', '4'},
-  {'2', '3', '4', '5'},
-  {'3', '4', '5', '6'}
-};
 
 
 EthernetUDP Udp;
 
-//the Arduino's IP
-IPAddress ip(192, 168, 52, 3);
-//destination IP
-IPAddress outIp(192, 168, 52, 222);
-const unsigned int outPort = 9999;
 
 byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
@@ -88,29 +93,18 @@ void setup() {
   while (!Serial) {
     ; // wait for serial port to connect. Needed for Leonardo only
   }
-  Serial.println("TESTOSCSEND started");
 
   int i, t;
 
   Ethernet.begin(mac, ip);
-  Serial.println("Ethernet started");
-  Udp.begin(8888);
-  Serial.println("UDP started");
-
-  /*
-    for(i=6; i<13; i++)
-      pinMode(i, INPUT); //set keypad pins to input
-    */
-  for (t = 3; t < 5; t++)
-    pinMode(t, OUTPUT); //set led pins to output
-
-  Serial.println("pinmodes sent");
-
+  Udp.begin(9999);
+  for (t = 3; t < 5; t++) pinMode(t, OUTPUT); //set led pins to output
 }
 
 
 void loop()
 {
+  timer.update();
   codemaker();
 }
 
@@ -118,48 +112,31 @@ void loop()
 // ==========================================================================================
 //   OSC MESSAGES
 // ==========================================================================================
+OSCMessage msg1("/toto/1");
+OSCMessage msg2("/toto/2");
+OSCMessage msg3("/toto/3");
+OSCMessage *msgs[3] = {&msg1, &msg2, &msg3};
 
-void toto(int id)
-
-{
-  Serial.print("id: ");
-  Serial.println(id);
-  
-  switch (id) {
-    case 1: {
-        //the message wants an OSC address as first argument
-        OSCMessage msg("/toto/1");
+void toto(int id) {
+  if (id >=0 && id < 3) {
+        msgs[id]->add(1);
         Udp.beginPacket(outIp, outPort);
-        msg.add(23.42);
-        msg.send(Udp);
+        msgs[id]->send(Udp);
         Udp.endPacket();
-        msg.empty(); // free space occupied by message
-        delay(20);
-      }
-      break;
-    case 2: {
-        OSCMessage msg("/toto/2"); //the message wants an OSC address as first argument
-        Udp.beginPacket(outIp, outPort);
-        msg.send(Udp); // send the bytes to the SLIP stream
-        Udp.endPacket(); // mark the end of the OSC Packet
-        msg.empty(); // free space occupied by message
-      }
-      break;
-    case 3: {
-        OSCMessage msg("/toto/3"); //the message wants an OSC address as first argument
-        Udp.beginPacket(outIp, outPort);
-        msg.send(Udp); // send the bytes to the SLIP stream
-        Udp.endPacket(); // mark the end of the OSC Packet
-        msg.empty(); // free space occupied by message
-      }
-      break;
-    default:
-      return;
+        msgs[id]->empty(); // free space occupied by message
+        timers[id] = timer.after(TIMEOUT, timeout, (void *)id);
   }
-
-  delay(20);
 }
 
+void timeout(void *context) {
+  int id = (int)context;
+  timer.stop(timers[id]);
+  msgs[id]->add(0);
+  Udp.beginPacket(outIp, outPort);
+  msgs[id]->send(Udp); // send the bytes to the SLIP stream
+  Udp.endPacket(); // mark the end of the OSC Packet
+  msgs[id]->empty(); // free space occupied by message
+}
 // ==========================================================================================
 //   RIGHT ANSWER
 // ==========================================================================================
@@ -203,8 +180,8 @@ void codematcher () {
     }
     if (j == 4) {
       Serial.println("Winner");
+      toto(i);
       winner();
-      toto(i+1);
       return;
     }
   }
